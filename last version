@@ -1,0 +1,135 @@
+#include <Wire.h>
+#include <RTClib.h>
+#include <LiquidCrystal.h>
+#include <dht11.h>
+
+RTC_DS3231 rtc;
+LiquidCrystal lcd(12, 8, 7, 6, 5, 4);
+dht11 dht;
+
+const int lcdBacklightPin = 13;
+const int pirSensorPin = 9;
+const int hourButtonPin = 11;
+const int minuteButtonPin = 10;
+const int editButtonPin = 3;
+const int ledPin = A2;
+const int dhtPin = 2;
+
+bool editMode = false;
+unsigned long lastButtonPress = 0;
+const long debounceDelay = 300;
+unsigned long previousMillis = 0;
+const long interval = 10 * 60 * 10000;
+bool isLCDSleeping = false;
+
+void setup() {
+  lcd.begin(16, 2);
+  Serial.begin(9600);
+
+  if (!rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    while (1);
+  }
+
+  if (rtc.lostPower()) {
+    Serial.println("RTC lost power, setting the time!");
+    rtc.adjust(DateTime(2023, 3, 29, rtc.now().hour(), rtc.now().minute(), rtc.now().second()));
+  }
+
+  digitalWrite(lcdBacklightPin, HIGH);
+  pinMode(lcdBacklightPin, OUTPUT);
+  pinMode(pirSensorPin, INPUT);
+  pinMode(hourButtonPin, INPUT_PULLUP);
+  pinMode(minuteButtonPin, INPUT_PULLUP);
+  pinMode(editButtonPin, INPUT_PULLUP);
+  pinMode(ledPin, OUTPUT);
+}
+
+void setLCDSleep(bool sleep) {
+  if (sleep) {
+    lcd.noDisplay();
+    digitalWrite(lcdBacklightPin, LOW);
+  } else {
+    lcd.display();
+    digitalWrite(lcdBacklightPin, HIGH);
+  }
+  isLCDSleeping = sleep;
+}
+
+void loop() {
+  if (digitalRead(pirSensorPin) == HIGH) {
+    if (isLCDSleeping) {
+      setLCDSleep(false);
+    }
+    previousMillis = millis();
+  } else {
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= interval && !isLCDSleeping) {
+      setLCDSleep(true);
+    }
+  }
+
+  if (digitalRead(editButtonPin) == LOW && millis() - lastButtonPress > debounceDelay) {
+    editMode = !editMode;
+    lastButtonPress = millis();
+  }
+
+  if (editMode) {
+    digitalWrite(ledPin, HIGH);
+    if (digitalRead(hourButtonPin) == LOW && millis() - lastButtonPress > debounceDelay) {
+      DateTime now = rtc.now();
+      now = now + TimeSpan(3600);
+      rtc.adjust(now);
+      lastButtonPress = millis();
+    }
+
+    if (digitalRead(minuteButtonPin) == LOW && millis() - lastButtonPress > debounceDelay) {
+      DateTime now = rtc.now();
+      now = now + TimeSpan(60);
+      rtc.adjust(now);
+      lastButtonPress = millis();
+    }
+  } else {
+    digitalWrite(ledPin, LOW);
+  }
+
+  if (!isLCDSleeping) {
+    DateTime now = rtc.now();
+    lcd.setCursor(0, 0);
+    if (now.hour() < 10) {
+      lcd.print('0');
+    }
+    lcd.print(now.hour(), DEC);
+    lcd.print(':');
+    if (now.minute() < 10) {
+      lcd.print('0'); }
+    lcd.print(now.minute(), DEC);
+    lcd.print(':');
+    if (now.second() < 10) {
+    lcd.print('0');
+}
+    lcd.print(now.second(), DEC);
+    lcd.setCursor(10, 0);
+    if (now.day() < 10) {
+      lcd.print('0');
+    }
+    lcd.print(now.day(), DEC);
+    lcd.print('.');
+    if (now.month() < 10) {
+      lcd.print('0');
+    }
+    lcd.print(now.month(), DEC);
+    dht.read(dhtPin);
+lcd.setCursor(0, 1);
+lcd.print("T: ");
+lcd.print(dht.temperature);
+lcd.print((char)223);
+lcd.print("C ");
+lcd.print("H: ");
+lcd.print(dht.humidity);
+lcd.print('%');
+}
+delay(1000);
+}
+
+
